@@ -2,59 +2,77 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"github.com/farrjere/kube_watcher/kube"
 	cli "github.com/urfave/cli/v2"
-	"io"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
+	"k8s.io/client-go/rest"
 	"log"
 	"os"
-	"path/filepath"
 )
+
+func setContext(cCtx *cli.Context) *rest.Config {
+	path := cCtx.String("path")
+	context := cCtx.String("context")
+	save := cCtx.Bool("save")
+
+	contextParms := kube.ConfigParameters{Context: context, Path: path, Save: save}
+
+	conf, err := kube.LoadConfig(contextParms)
+	if err != nil {
+		fmt.Println("unable to properly load config")
+		panic(err)
+	}
+	return conf
+}
+
+func saveDeploymentLogs(cCtx *cli.Context) {
+	ctx := context.Background()
+	config, err := kube.LoadConfig(kube.ConfigParameters{})
+	if err != nil {
+		fmt.Println("error loading config")
+		panic(err)
+	}
+	kc := kube.NewKubeClient(config)
+	namespace := cCtx.String("namespace")
+	kc.SetNamespace(namespace)
+	deployment := cCtx.String("deployment")
+	lines := cCtx.Int64("lines")
+	dl := kube.NewDeploymentWatcher("test", kc, ctx)
+	dl.LogAllPodsToDisk(deployment, lines)
+}
 
 func main() {
 	app := &cli.App{
 		Commands: []*cli.Command{
 			{
-				Name:    "add",
-				Aliases: []string{"a"},
-				Usage:   "add a task to the list",
-				Action: func(cCtx *cli.Context) error {
-					fmt.Println("added task: ", cCtx.Args().First())
-					return nil
-				},
-			},
-			{
-				Name:    "complete",
+				Name:    "set_context",
 				Aliases: []string{"c"},
-				Usage:   "complete a task on the list",
+				Usage:   "Sets the context that will be used for all other commands",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "save", Value: true},
+					&cli.StringFlag{Name: "path", Usage: "the path to your kube conf"},
+					&cli.StringFlag{Name: "context", Usage: "the context to use"},
+				},
 				Action: func(cCtx *cli.Context) error {
-					fmt.Println("completed task: ", cCtx.Args().First())
+					setContext(cCtx)
 					return nil
 				},
 			},
 			{
-				Name:    "template",
-				Aliases: []string{"t"},
-				Usage:   "options for task templates",
+				Name:    "deployment_logs",
+				Aliases: []string{"dl"},
+				Usage:   "saves all logs to disk, searches logs, or attaches to logs to watch",
 				Subcommands: []*cli.Command{
 					{
-						Name:  "add",
-						Usage: "add a new template",
-						Action: func(cCtx *cli.Context) error {
-							fmt.Println("new task template: ", cCtx.Args().First())
-							return nil
+						Name:  "save",
+						Usage: "saves all logs for a deployment to disk: dl save -flags path",
+						Flags: []cli.Flag{
+							&cli.StringFlag{Name: "namespace", Usage: "the namespace to use"},
+							&cli.StringFlag{Name: "deployment", Usage: "deployment"},
+							&cli.Int64Flag{Name: "lines", Usage: "the # of lines to output", Value: 0},
 						},
-					},
-					{
-						Name:  "remove",
-						Usage: "remove an existing template",
 						Action: func(cCtx *cli.Context) error {
-							fmt.Println("removed task template: ", cCtx.Args().First())
+							saveDeploymentLogs(cCtx)
 							return nil
 						},
 					},
@@ -66,64 +84,4 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
-
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-
-	// use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
-
-	if err != nil {
-		panic(err.Error())
-	}
-	fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
-	for i, pod := range pods.Items {
-		fmt.Println("-----------------------------------------------------------------------------------------------------------------------")
-		fmt.Println("looking at pod ", i)
-		c := pod.Spec.Containers[0]
-		fmt.Printf("Pod %v - Container %v;\n", pod.Name, c.Name)
-
-		var lines int64 = 100
-		logsRq := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{Container: c.Name, TailLines: &lines, Timestamps: true})
-		logs, err := logsRq.Stream(context.TODO())
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		defer logs.Close()
-
-		for {
-			buf := make([]byte, 2000)
-			numBytes, err := logs.Read(buf)
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				break
-			}
-			if numBytes == 0 {
-				continue
-			}
-			message := string(buf[:numBytes])
-			fmt.Println(message)
-		}
-	}
-
 }
