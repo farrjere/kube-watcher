@@ -71,6 +71,7 @@ func writeLogsToDisk(path string, pc podContext, podName string, lines int64) {
 	defer f.Close()
 	if err != nil {
 		fmt.Printf("Unable to write logs for %v\n", podName)
+		fmt.Println(err)
 		return
 	}
 	w := bufio.NewWriter(f)
@@ -78,6 +79,7 @@ func writeLogsToDisk(path string, pc podContext, podName string, lines int64) {
 		_, err = w.WriteString(line + "\n")
 		if err != nil {
 			fmt.Printf("unable to write string %v for pod %v ", line, podName)
+			fmt.Println(err)
 			break
 		}
 	}
