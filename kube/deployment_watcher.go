@@ -3,7 +3,9 @@ package kube
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"github.com/fatih/color"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
@@ -12,6 +14,16 @@ import (
 	"sync"
 	"time"
 )
+
+var COLORS = []*color.Color{
+	color.New(color.FgCyan),
+	color.New(color.FgMagenta),
+	color.New(color.FgBlue),
+	color.New(color.FgGreen),
+	color.New(color.FgRed),
+	color.New(color.FgYellow),
+	color.New(color.FgWhite),
+}
 
 type podContext struct {
 	podLog  *PodLog
@@ -51,6 +63,38 @@ func NewDeploymentWatcher(name string, client *KubeClient, ctx context.Context) 
 	return &dl
 }
 
+func (dl *DeploymentWatcher) StreamLogs() {
+	logColors := make(map[string]*color.Color)
+	for i, p := range dl.pods {
+		pc := dl.podContexts[p.Name]
+		colorInd := i % len(COLORS)
+		logColor := COLORS[colorInd]
+		logColors[p.Name] = logColor
+		go func() {
+			pc.podLog.StreamLogs()
+		}()
+	}
+
+	for {
+		for _, p := range dl.pods {
+			pc := dl.podContexts[p.Name]
+			select {
+			case m := <-pc.podLog.Messages:
+				logColor := logColors[p.Name]
+				_, err := logColor.Println(p.Name, m)
+				if err != nil {
+					fmt.Println("unable to print log line")
+				}
+			case <-dl.context.Done():
+				if errors.Is(pc.context.Err(), context.Canceled) {
+					break
+				}
+				pc.cancel()
+			}
+		}
+	}
+}
+
 func (dl *DeploymentWatcher) LogAllPodsToDisk(path string, lines int64) {
 	var wg sync.WaitGroup
 	for podName, pc := range dl.podContexts {
@@ -59,26 +103,27 @@ func (dl *DeploymentWatcher) LogAllPodsToDisk(path string, lines int64) {
 		pc := pc
 		go func() {
 			defer wg.Done()
-			writeLogsToDisk(path, pc, podName, lines)
+			logs := pc.podLog.GetLogs(lines)
+			logPath := filepath.Join(path, podName+".log")
+			WriteLinesToDisk(logPath, logs)
 		}()
 	}
 	wg.Wait()
 }
 
-func writeLogsToDisk(path string, pc podContext, podName string, lines int64) {
-	logs := pc.podLog.GetLogs(lines)
-	f, err := os.Create(filepath.Join(path, podName+".log"))
+func WriteLinesToDisk(path string, lines []string) {
+	f, err := os.Create(path)
 	defer f.Close()
 	if err != nil {
-		fmt.Printf("Unable to write logs for %v\n", podName)
+		fmt.Printf("Unable to write %v\n", path)
 		fmt.Println(err)
 		return
 	}
 	w := bufio.NewWriter(f)
-	for _, line := range logs {
+	for _, line := range lines {
 		_, err = w.WriteString(line + "\n")
 		if err != nil {
-			fmt.Printf("unable to write string %v for pod %v ", line, podName)
+			fmt.Printf("unable to write string %v to %v ", line, path)
 			fmt.Println(err)
 			break
 		}
