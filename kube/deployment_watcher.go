@@ -8,22 +8,14 @@ import (
 	"github.com/fatih/color"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
-
-var COLORS = []*color.Color{
-	color.New(color.FgCyan),
-	color.New(color.FgMagenta),
-	color.New(color.FgBlue),
-	color.New(color.FgGreen),
-	color.New(color.FgRed),
-	color.New(color.FgYellow),
-	color.New(color.FgWhite),
-}
 
 type podContext struct {
 	podLog  *PodLog
@@ -65,10 +57,16 @@ func NewDeploymentWatcher(name string, client *KubeClient, ctx context.Context) 
 
 func (dl *DeploymentWatcher) StreamLogs() {
 	logColors := make(map[string]*color.Color)
-	for i, p := range dl.pods {
+	for _, p := range dl.pods {
 		pc := dl.podContexts[p.Name]
-		colorInd := i % len(COLORS)
-		logColor := COLORS[colorInd]
+		i := rand.Intn(231)
+		for {
+			if !slices.Contains([]int{0, 15, 16, 231}, i) {
+				break
+			}
+			i = rand.Intn(231)
+		}
+		logColor := color.New(color.Attribute(38), color.Attribute(5), color.Attribute(i))
 		logColors[p.Name] = logColor
 		go func() {
 			pc.podLog.StreamLogs()
