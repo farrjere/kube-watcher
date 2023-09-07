@@ -57,11 +57,13 @@ func NewDeploymentWatcher(name string, client *KubeClient, ctx context.Context) 
 
 func (dl *DeploymentWatcher) StreamLogs() {
 	logColors := make(map[string]*color.Color)
+	ignoreColors := []int{0, 15, 16, 231}
 	for _, p := range dl.pods {
 		pc := dl.podContexts[p.Name]
 		i := rand.Intn(231)
 		for {
-			if !slices.Contains([]int{0, 15, 16, 231}, i) {
+			if !slices.Contains(ignoreColors, i) {
+				ignoreColors = append(ignoreColors, i)
 				break
 			}
 			i = rand.Intn(231)
