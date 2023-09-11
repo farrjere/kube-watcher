@@ -19,6 +19,7 @@ type KubeClient struct {
 
 func NewKubeClient(config *rest.Config) *KubeClient {
 	client := KubeClient{config: config}
+	fmt.Println(config)
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panicMsg := fmt.Sprintf("Unable to setup client %v", err)
@@ -62,15 +63,6 @@ func (kc *KubeClient) GetDeployments(ctx context.Context) []string {
 	return deployments
 }
 
-// Havne't figured out how to do this yet
-func getNameList(objectList []metav1.ObjectMeta) []string {
-	var objects = make([]string, len(objectList))
-	for i, obj := range objectList {
-		objects[i] = obj.Name
-	}
-	return objects
-}
-
 type Pod struct {
 	Name       string
 	Containers []string
@@ -109,8 +101,4 @@ func (kc *KubeClient) GetContainerLogs(ctx context.Context, podName string, opti
 		return nil
 	}
 	return logs
-}
-
-func (kc *KubeClient) GetContainers(ctx context.Context, podName string) {
-
 }

@@ -42,3 +42,19 @@ func LoadConfig(configParam ConfigParameters) (*rest.Config, error) {
 
 	return clientConfig.ClientConfig()
 }
+
+func AvailableContexts(path string) []string {
+	if path == "" {
+		path = clientcmd.RecommendedHomeFile
+	}
+	config := clientcmd.GetConfigFromFileOrDie(path)
+
+	keys := make([]string, len(config.Contexts))
+
+	i := 0
+	for k := range config.Contexts {
+		keys[i] = k
+		i++
+	}
+	return keys
+}

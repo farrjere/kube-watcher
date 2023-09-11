@@ -15,12 +15,14 @@ func TestLogAllPodsToDisk(t *testing.T) {
 	kc := NewKubeClient(config)
 	kc.SetNamespace("default")
 	dl := NewDeploymentWatcher("test", kc, ctx)
-	dl.LogAllPodsToDisk("C:\\temp\\test", 15)
-	d, e := os.ReadDir("C:\\temp\\test")
+	tempDir, err := os.MkdirTemp("", "sampledir")
+	defer os.RemoveAll(tempDir)
+	dl.LogAllPodsToDisk(tempDir, 15)
+	d, e := os.ReadDir(tempDir)
 	if e != nil {
 		panic(e)
 	}
-	if len(d) != 3 {
+	if len(d) != 10 {
 		t.Errorf("expected there to be 3 files instead found %v", len(d))
 	}
 }

@@ -23,7 +23,7 @@ func streamLogs(cCtx *cli.Context) {
 	kc.SetNamespace(namespace)
 	deployment := cCtx.String("deployment")
 	dl := kube.NewDeploymentWatcher(deployment, kc, ctx)
-	dl.StreamLogs()
+	dl.StreamLogsConsole()
 }
 
 func setContext(cCtx *cli.Context) *rest.Config {

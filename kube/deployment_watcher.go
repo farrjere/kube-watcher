@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-type podContext struct {
-	podLog  *PodLog
+type PodContext struct {
+	PodLog  *PodLog
 	pod     Pod
 	context context.Context
 	cancel  context.CancelFunc
@@ -29,7 +29,7 @@ type DeploymentWatcher struct {
 	client      *KubeClient
 	context     context.Context
 	pods        []Pod
-	podContexts map[string]podContext
+	podContexts map[string]PodContext
 }
 
 type SearchParameters struct {
@@ -47,15 +47,33 @@ type SearchResult struct {
 func NewDeploymentWatcher(name string, client *KubeClient, ctx context.Context) *DeploymentWatcher {
 	dl := DeploymentWatcher{name: name, client: client, context: ctx}
 	dl.pods = client.GetPods(ctx, name)
-	dl.podContexts = make(map[string]podContext)
+	dl.podContexts = make(map[string]PodContext)
 	for _, p := range dl.pods {
 		childContext, cancel := context.WithCancel(ctx)
-		dl.podContexts[p.Name] = podContext{pod: p, podLog: NewPodLog(p.Name, client, childContext), context: childContext, cancel: cancel}
+		dl.podContexts[p.Name] = PodContext{pod: p, PodLog: NewPodLog(p.Name, client, childContext), context: childContext, cancel: cancel}
 	}
 	return &dl
 }
 
-func (dl *DeploymentWatcher) StreamLogs() {
+func (dl *DeploymentWatcher) GetPods() []string {
+	podNames := make([]string, len(dl.pods))
+	for i, p := range dl.pods {
+		podNames[i] = p.Name
+	}
+	return podNames
+}
+
+func (dl *DeploymentWatcher) StreamLogs() map[string]PodContext {
+	for _, p := range dl.pods {
+		pc := dl.podContexts[p.Name]
+		go func() {
+			pc.PodLog.StreamLogs()
+		}()
+	}
+	return dl.podContexts
+}
+
+func (dl *DeploymentWatcher) StreamLogsConsole() {
 	logColors := make(map[string]*color.Color)
 	ignoreColors := []int{0, 15, 16, 231}
 	for _, p := range dl.pods {
@@ -71,7 +89,7 @@ func (dl *DeploymentWatcher) StreamLogs() {
 		logColor := color.New(color.Attribute(38), color.Attribute(5), color.Attribute(i))
 		logColors[p.Name] = logColor
 		go func() {
-			pc.podLog.StreamLogs()
+			pc.PodLog.StreamLogs()
 		}()
 	}
 
@@ -79,7 +97,7 @@ func (dl *DeploymentWatcher) StreamLogs() {
 		for _, p := range dl.pods {
 			pc := dl.podContexts[p.Name]
 			select {
-			case m := <-pc.podLog.Messages:
+			case m := <-pc.PodLog.Messages:
 				logColor := logColors[p.Name]
 				_, err := logColor.Println(p.Name, m)
 				if err != nil {
@@ -103,7 +121,7 @@ func (dl *DeploymentWatcher) LogAllPodsToDisk(path string, lines int64) {
 		pc := pc
 		go func() {
 			defer wg.Done()
-			logs := pc.podLog.GetLogs(lines)
+			logs := pc.PodLog.GetLogs(lines)
 			logPath := filepath.Join(path, podName+".log")
 			WriteLinesToDisk(logPath, logs)
 		}()
@@ -150,7 +168,7 @@ func (dl *DeploymentWatcher) SearchLogs(searchParams SearchParameters) []SearchR
 	return finalRes
 }
 
-func searchPodLogs(wg *sync.WaitGroup, searchParams SearchParameters, podname string, pc podContext, resultChannel chan<- SearchResult) {
+func searchPodLogs(wg *sync.WaitGroup, searchParams SearchParameters, podname string, pc PodContext, resultChannel chan<- SearchResult) {
 	defer wg.Done()
 	matches := make([]string, 0)
 	opts := v1.PodLogOptions{Timestamps: true}
@@ -166,13 +184,13 @@ func searchPodLogs(wg *sync.WaitGroup, searchParams SearchParameters, podname st
 	resultChannel <- res
 }
 
-func searchContainerLog(opts v1.PodLogOptions, searchParams SearchParameters, pc podContext, container string) []string {
+func searchContainerLog(opts v1.PodLogOptions, searchParams SearchParameters, pc PodContext, container string) []string {
 	opts.Container = container
 	if !searchParams.Since.IsZero() {
 		opts.SinceTime = &metav1.Time{Time: searchParams.Since}
 	}
 	matches := make([]string, 0)
-	logs := pc.podLog.GetLogsWithOpt(opts)
+	logs := pc.PodLog.GetLogsWithOpt(opts)
 	for _, l := range logs {
 		match := strings.Index(l, searchParams.Query)
 		if match > -1 {
