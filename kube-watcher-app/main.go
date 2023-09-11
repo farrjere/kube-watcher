@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"github.com/farrjere/kube_watcher/kube-watcher-app/app"
+	"github.com/farrjere/kube_watcher/kube-watcher-app/ui"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -13,7 +15,8 @@ var assets embed.FS
 
 func main() {
 	// Create an instance of the app structure
-	app := app.NewApp()
+	ui := ui.New()
+	app := app.NewApp(ui)
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -24,10 +27,11 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.Startup,
-		Bind: []interface{}{
-			app,
+		OnStartup: func(ctx context.Context) {
+			ui.Startup(ctx)
+			app.Startup(ctx)
 		},
+		Bind: []interface{}{app, ui},
 	})
 
 	if err != nil {

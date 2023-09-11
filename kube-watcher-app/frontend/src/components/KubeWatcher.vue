@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import {GetContexts, SetDeployment, LoadCluster, GetNamespaces, GetDeployments, SetNamespace, Stream} from "../../wailsjs/go/app/App";
+import {GetContexts, SetDeployment, LoadCluster, GetNamespaces, GetDeployments, SetNamespace, Stream, CancelPodStream, Save, Search} from "../../wailsjs/go/app/App";
 import {EventsOn} from "../../wailsjs/runtime";
 
 import {app} from "../../wailsjs/go/models";
@@ -13,6 +13,7 @@ const deployments = ref([""])
 const selectedContext = ref("")
 const selectedNamespace = ref("")
 const selectedDeployment = ref("")
+const query = ref("")
 const podNames = ref([""])
 
 
@@ -42,6 +43,13 @@ async function setNamespace(){
   deployments.value = await GetDeployments();
 }
 
+async function cancelAllStreams() {
+  console.log("Called cancelAllStreams")
+  for (const name of podNames.value){
+    await CancelPodStream(name);
+  }
+}
+
 async function setContext() {
   console.log("Called setContext")
   await LoadCluster("", selectedContext.value);
@@ -55,20 +63,38 @@ async function setDeployment() {
   }
 }
 
+async function save() {
+  console.log("Called save");
+  await Save();
+}
+
+async function search() {
+  console.log("Called save");
+  let searchResults = await Search(query.value);
+  console.log(searchResults.length);
+  for(let result of searchResults) {
+    let logString = "";
+    for(let m of result.Message) {
+      logString += m + "\n";
+    }
+    logsByPod.value.set(result.PodName, logString);
+  }
+}
+
 </script>
 
 
 <template class="bg-dark">
   <nav class="navbar bg-dark navbar-expand-xl navbar-vertical" data-bs-theme="dark">
     <div class="container-fluid">
-      <a class="navbar-brand" href="#">Navbar</a>
+      <a class="navbar-brand" href="#"></a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarNavDropdown">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           <li class="nav-item dropdown">
-            <label for="contextSelect" class="">Context</label>
+            <label for="contextSelect" class="text-secondary">Context</label>
             <br/>
               <select v-model="selectedContext" @input="setContext">
                 <option disabled value="">Please select a context</option>
@@ -77,7 +103,7 @@ async function setDeployment() {
           </li>
 
             <li class="nav-item dropdown">
-              <label for="contextSelect" class="">Namespace</label>
+              <label for="contextSelect" class="text-secondary">Namespace</label>
               <br/>
                 <select v-model="selectedNamespace" @change="setNamespace">
                   <option disabled value="">Please select a namespace</option>
@@ -85,23 +111,24 @@ async function setDeployment() {
                 </select>
             </li>
             <li class="nav-item dropdown">
-              <label for="contextSelect" class="">Deployment</label><br/>
+              <label for="contextSelect" class="text-secondary">Deployment</label><br/>
               <select v-model="selectedDeployment" @change="setDeployment">
                 <option disabled value="">Please select a deployment</option>
                 <option v-for="deployment in deployments">{{ deployment}}</option>
               </select>
             </li>
           <li v-if="selectedDeployment !== ''"  class="nav-item"><p><button class="nav-item"  @click="stream()">Stream</button></p></li>
-          <li v-if="selectedDeployment !== ''"  class="nav-item"><p><button class="nav-item" @click="">Save</button></p></li>
+          <li v-if="podNames[0] !== ''"  class="nav-item"><p><button class="nav-item"  @click="cancelAllStreams()">Cancel All Streams</button></p></li>
+          <li v-if="selectedDeployment !== ''"  class="nav-item"><p><button class="nav-item" @click="save()">Save</button></p></li>
         </ul>
             <form v-if="selectedDeployment !== ''" class="d-flex" role="search">
-              <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
-              <button class="btn btn-outline-success" type="submit">Search</button>
+              <input class="form-control me-2" type="search" v-model="query" placeholder="Search" aria-label="Search">
+              <button class="btn btn-outline-success" type="submit" @click="search()">Search</button>
             </form>
       </div>
     </div>
   </nav>
-  <div v-if="podNames.length > 0" class="container-fluid">
+  <div v-if="podNames[0] !== ''" class="container-fluid">
     <div class="row align-content-center">
       <div v-for="(pod, index) in podNames" class="p-1 rounded-1 text-bg-dark text-info col-lg-5 sides">
         <div class="py-5">

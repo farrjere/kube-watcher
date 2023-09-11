@@ -3,15 +3,19 @@ package app
 import (
 	"context"
 	"github.com/farrjere/kube_watcher/kube"
+	"github.com/farrjere/kube_watcher/kube-watcher-app/ui"
+	"github.com/skratchdot/open-golang/open"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx        context.Context
-	kubeClient *kube.KubeClient
-	watcher    *kube.DeploymentWatcher
-	cancelFunc context.CancelFunc
+	ctx           context.Context
+	kubeClient    *kube.KubeClient
+	watcher       *kube.DeploymentWatcher
+	cancelFunc    context.CancelFunc
+	CancelChannel chan string
+	ui            *ui.UI
 }
 
 type PodLogMessage struct {
@@ -20,8 +24,8 @@ type PodLogMessage struct {
 }
 
 // NewApp creates a new App application struct
-func NewApp() *App {
-	return &App{}
+func NewApp(ui *ui.UI) *App {
+	return &App{ui: ui}
 }
 
 func (a *App) Test() PodLogMessage {
@@ -60,6 +64,29 @@ func (a *App) SetDeployment(deployment string) []string {
 	return a.watcher.GetPods()
 }
 
+func (a *App) CancelPodStream(pod string) {
+	wailsRuntime.LogInfo(a.ctx, "Called cancel pod stream")
+	a.CancelChannel <- pod
+}
+
+func (a *App) Save() {
+	dir := a.ui.ChooseDir("")
+	a.watcher.LogAllPodsToDisk(dir, 0)
+	err := open.Run(dir)
+	if err != nil {
+		wailsRuntime.LogError(a.ctx, err.Error())
+	}
+	wailsRuntime.LogInfo(a.ctx, "Saved logs to disk")
+}
+
+func (a *App) Search(query string) []kube.SearchResult {
+	wailsRuntime.LogInfo(a.ctx, "Search called")
+	params := kube.SearchParameters{Query: query, AllContainers: true}
+	results := a.watcher.SearchLogs(params)
+	wailsRuntime.LogInfof(a.ctx, "Search returned %v results", len(results))
+	return results
+}
+
 func (a *App) Stream() {
 	wailsRuntime.LogInfo(a.ctx, "Stream called")
 	podContexts := a.watcher.StreamLogs()
@@ -69,6 +96,8 @@ func (a *App) Stream() {
 			case m := <-pc.PodLog.Messages:
 				event := PodLogMessage{Message: m, Pod: name}
 				wailsRuntime.EventsEmit(a.ctx, "pod_log", &event)
+			case m := <-a.CancelChannel:
+				podContexts[m].Cancel()
 			}
 		}
 	}

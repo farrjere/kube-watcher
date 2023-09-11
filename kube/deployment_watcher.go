@@ -21,7 +21,7 @@ type PodContext struct {
 	PodLog  *PodLog
 	pod     Pod
 	context context.Context
-	cancel  context.CancelFunc
+	Cancel  context.CancelFunc
 }
 
 type DeploymentWatcher struct {
@@ -50,7 +50,7 @@ func NewDeploymentWatcher(name string, client *KubeClient, ctx context.Context) 
 	dl.podContexts = make(map[string]PodContext)
 	for _, p := range dl.pods {
 		childContext, cancel := context.WithCancel(ctx)
-		dl.podContexts[p.Name] = PodContext{pod: p, PodLog: NewPodLog(p.Name, client, childContext), context: childContext, cancel: cancel}
+		dl.podContexts[p.Name] = PodContext{pod: p, PodLog: NewPodLog(p.Name, client, childContext), context: childContext, Cancel: cancel}
 	}
 	return &dl
 }
@@ -107,7 +107,7 @@ func (dl *DeploymentWatcher) StreamLogsConsole() {
 				if errors.Is(pc.context.Err(), context.Canceled) {
 					break
 				}
-				pc.cancel()
+				pc.Cancel()
 			}
 		}
 	}

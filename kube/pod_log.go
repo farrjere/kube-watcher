@@ -8,7 +8,7 @@ import (
 
 /*
 Things we want to do with a pod log
- 1. Watch them until we cancel
+ 1. Watch them until we Cancel
  2. Search:
     Possibly by
     - A container
