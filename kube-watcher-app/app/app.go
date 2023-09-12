@@ -25,7 +25,8 @@ type PodLogMessage struct {
 
 // NewApp creates a new App application struct
 func NewApp(ui *ui.UI) *App {
-	return &App{ui: ui}
+	c := make(chan string)
+	return &App{ui: ui, CancelChannel: c}
 }
 
 func (a *App) Test() PodLogMessage {
@@ -65,8 +66,9 @@ func (a *App) SetDeployment(deployment string) []string {
 }
 
 func (a *App) CancelPodStream(pod string) {
-	wailsRuntime.LogInfo(a.ctx, "Called cancel pod stream")
+	wailsRuntime.LogInfof(a.ctx, "Called cancel pod stream for pod %v", pod)
 	a.CancelChannel <- pod
+	wailsRuntime.LogInfof(a.ctx, "Messages in channel %v", len(a.CancelChannel))
 }
 
 func (a *App) Save() {
@@ -79,11 +81,10 @@ func (a *App) Save() {
 	wailsRuntime.LogInfo(a.ctx, "Saved logs to disk")
 }
 
-func (a *App) Search(query string) []kube.SearchResult {
+func (a *App) Search(query string, limit int64) []kube.SearchResult {
 	wailsRuntime.LogInfo(a.ctx, "Search called")
-	params := kube.SearchParameters{Query: query, AllContainers: true}
+	params := kube.SearchParameters{Query: query, AllContainers: true, Limit: limit}
 	results := a.watcher.SearchLogs(params)
-	wailsRuntime.LogInfof(a.ctx, "Search returned %v results", len(results))
 	return results
 }
 
@@ -93,11 +94,12 @@ func (a *App) Stream() {
 	for {
 		for name, pc := range podContexts {
 			select {
+			case m := <-a.CancelChannel:
+				wailsRuntime.LogInfof(a.ctx, "Canceling pod %v", m)
+				podContexts[m].Cancel()
 			case m := <-pc.PodLog.Messages:
 				event := PodLogMessage{Message: m, Pod: name}
 				wailsRuntime.EventsEmit(a.ctx, "pod_log", &event)
-			case m := <-a.CancelChannel:
-				podContexts[m].Cancel()
 			}
 		}
 	}

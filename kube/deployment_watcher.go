@@ -19,7 +19,6 @@ import (
 
 type PodContext struct {
 	PodLog  *PodLog
-	pod     Pod
 	context context.Context
 	Cancel  context.CancelFunc
 }
@@ -28,7 +27,7 @@ type DeploymentWatcher struct {
 	name        string
 	client      *KubeClient
 	context     context.Context
-	pods        []Pod
+	pods        map[string]Pod
 	podContexts map[string]PodContext
 }
 
@@ -37,34 +36,50 @@ type SearchParameters struct {
 	Container     string
 	Since         time.Time
 	AllContainers bool
+	Limit         int64
 }
 
 type SearchResult struct {
-	PodName string
-	Matches []string
+	PodName string   `json:"pod_name"`
+	Matches []string `json:"matches"`
 }
 
 func NewDeploymentWatcher(name string, client *KubeClient, ctx context.Context) *DeploymentWatcher {
 	dl := DeploymentWatcher{name: name, client: client, context: ctx}
-	dl.pods = client.GetPods(ctx, name)
+	pods := client.GetPods(ctx, name)
+	dl.pods = make(map[string]Pod)
+	for _, p := range pods {
+		dl.pods[p.Name] = p
+	}
+	dl.resetPodContexts()
+	return &dl
+}
+
+func (dl *DeploymentWatcher) resetPodContexts() {
 	dl.podContexts = make(map[string]PodContext)
 	for _, p := range dl.pods {
-		childContext, cancel := context.WithCancel(ctx)
-		dl.podContexts[p.Name] = PodContext{pod: p, PodLog: NewPodLog(p.Name, client, childContext), context: childContext, Cancel: cancel}
+		dl.resetPodContext(p.Name)
 	}
-	return &dl
+}
+
+func (dl *DeploymentWatcher) resetPodContext(name string) {
+	childContext, cancel := context.WithCancel(dl.context)
+	dl.podContexts[name] = PodContext{PodLog: NewPodLog(name, dl.client, childContext), context: childContext, Cancel: cancel}
 }
 
 func (dl *DeploymentWatcher) GetPods() []string {
 	podNames := make([]string, len(dl.pods))
-	for i, p := range dl.pods {
-		podNames[i] = p.Name
+	i := 0
+	for name := range dl.pods {
+		podNames[i] = name
+		i += 1
 	}
 	return podNames
 }
 
 func (dl *DeploymentWatcher) StreamLogs() map[string]PodContext {
 	for _, p := range dl.pods {
+		dl.resetPodContext(p.Name)
 		pc := dl.podContexts[p.Name]
 		go func() {
 			pc.PodLog.StreamLogs()
@@ -153,9 +168,11 @@ func (dl *DeploymentWatcher) SearchLogs(searchParams SearchParameters) []SearchR
 	var wg sync.WaitGroup
 	finalRes := make([]SearchResult, 0)
 	results := make(chan SearchResult, len(dl.pods))
-	for podName, pc := range dl.podContexts {
+	for podName, pod := range dl.pods {
 		wg.Add(1)
-		go searchPodLogs(&wg, searchParams, podName, pc, results)
+		dl.resetPodContext(podName)
+		pc := dl.podContexts[podName]
+		go searchPodLogs(&wg, searchParams, podName, pc, pod, results)
 	}
 
 	wg.Wait()
@@ -168,12 +185,12 @@ func (dl *DeploymentWatcher) SearchLogs(searchParams SearchParameters) []SearchR
 	return finalRes
 }
 
-func searchPodLogs(wg *sync.WaitGroup, searchParams SearchParameters, podname string, pc PodContext, resultChannel chan<- SearchResult) {
+func searchPodLogs(wg *sync.WaitGroup, searchParams SearchParameters, podname string, pc PodContext, pod Pod, resultChannel chan<- SearchResult) {
 	defer wg.Done()
 	matches := make([]string, 0)
 	opts := v1.PodLogOptions{Timestamps: true}
 	if searchParams.AllContainers {
-		for _, c := range pc.pod.Containers {
+		for _, c := range pod.Containers {
 			matches = append(matches, searchContainerLog(opts, searchParams, pc, c)...)
 		}
 	} else {
@@ -186,16 +203,26 @@ func searchPodLogs(wg *sync.WaitGroup, searchParams SearchParameters, podname st
 
 func searchContainerLog(opts v1.PodLogOptions, searchParams SearchParameters, pc PodContext, container string) []string {
 	opts.Container = container
+
 	if !searchParams.Since.IsZero() {
 		opts.SinceTime = &metav1.Time{Time: searchParams.Since}
 	}
 	matches := make([]string, 0)
 	logs := pc.PodLog.GetLogsWithOpt(opts)
-	for _, l := range logs {
-		match := strings.Index(l, searchParams.Query)
+	if searchParams.Limit == 0 {
+		searchParams.Limit = int64(len(logs))
+	}
+
+	for i := len(logs) - 1; i >= 0; i-- {
+		if len(matches) >= int(searchParams.Limit) {
+			break
+		}
+		l := logs[i]
+		match := strings.Index(strings.ToLower(l), strings.ToLower(searchParams.Query))
 		if match > -1 {
 			matches = append(matches, l)
 		}
 	}
+	slices.Reverse(matches)
 	return matches
 }

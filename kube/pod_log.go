@@ -60,7 +60,8 @@ func (pl *PodLog) GetLogsWithOpt(opts v1.PodLogOptions) []string {
 
 func (pl *PodLog) StreamLogs() {
 	defer close(pl.messages)
-	options := v1.PodLogOptions{Timestamps: true, Follow: true}
+	lines := int64(100)
+	options := v1.PodLogOptions{Timestamps: true, Follow: true, TailLines: &lines}
 	logs := pl.client.GetContainerLogs(pl.context, pl.PodName, options)
 	defer logs.Close()
 	reader := bufio.NewScanner(logs)

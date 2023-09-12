@@ -34,6 +34,7 @@ onMounted(async () => {
 })
 
 async function stream(){
+  logsByPod.value = new Map<string, string>();
   Stream();
 }
 
@@ -68,23 +69,24 @@ async function save() {
   await Save();
 }
 
-async function search() {
+async function execSearch() {
+  logsByPod.value = new Map<string, string>();
   console.log("Called save");
-  let searchResults = await Search(query.value);
+  let searchResults = await Search(query.value, 1000);
   console.log(searchResults.length);
   for(let result of searchResults) {
     let logString = "";
-    for(let m of result.Message) {
+    for(let m of result.matches) {
       logString += m + "\n";
     }
-    logsByPod.value.set(result.PodName, logString);
+    logsByPod.value.set(result.pod_name, logString);
   }
 }
 
 </script>
 
 
-<template class="bg-dark">
+<template class="bg-black">
   <nav class="navbar bg-dark navbar-expand-xl navbar-vertical" data-bs-theme="dark">
     <div class="container-fluid">
       <a class="navbar-brand" href="#"></a>
@@ -121,10 +123,8 @@ async function search() {
           <li v-if="podNames[0] !== ''"  class="nav-item"><p><button class="nav-item"  @click="cancelAllStreams()">Cancel All Streams</button></p></li>
           <li v-if="selectedDeployment !== ''"  class="nav-item"><p><button class="nav-item" @click="save()">Save</button></p></li>
         </ul>
-            <form v-if="selectedDeployment !== ''" class="d-flex" role="search">
-              <input class="form-control me-2" type="search" v-model="query" placeholder="Search" aria-label="Search">
-              <button class="btn btn-outline-success" type="submit" @click="search()">Search</button>
-            </form>
+            <input class="form-control me-2" style="width: 300px;" type="search" v-model="query" placeholder="Search" aria-label="Search">
+            <button class="btn btn-outline-success" @click="execSearch()">Search</button>
       </div>
     </div>
   </nav>

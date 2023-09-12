@@ -16,7 +16,7 @@ export function LoadCluster(arg1:string,arg2:string):Promise<void>;
 
 export function Save():Promise<void>;
 
-export function Search(arg1:string):Promise<Array<kube.SearchResult>>;
+export function Search(arg1:string,arg2:number):Promise<Array<kube.SearchResult>>;
 
 export function SetDeployment(arg1:string):Promise<Array<string>>;
 

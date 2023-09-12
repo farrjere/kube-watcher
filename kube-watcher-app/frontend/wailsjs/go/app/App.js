@@ -26,8 +26,8 @@ export function Save() {
   return window['go']['app']['App']['Save']();
 }
 
-export function Search(arg1) {
-  return window['go']['app']['App']['Search'](arg1);
+export function Search(arg1, arg2) {
+  return window['go']['app']['App']['Search'](arg1, arg2);
 }
 
 export function SetDeployment(arg1) {
