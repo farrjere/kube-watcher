@@ -8,6 +8,7 @@ import PodLogMessage = app.PodLogMessage;
 const logsByPod = ref(new Map<string, string>());
 const count = ref(0)
 const contexts = ref([""])
+const sortOrder = ref("")
 const namespaces = ref([""])
 const deployments = ref([""])
 const selectedContext = ref("")
@@ -15,7 +16,7 @@ const selectedNamespace = ref("")
 const selectedDeployment = ref("")
 const query = ref("")
 const podNames = ref([""])
-
+const searchOptions = ref(["Lines", "Pod Name", "Recent Update"])
 
 onMounted(async () => {
   console.log(`The initial count is ${count.value}.`)
@@ -25,13 +26,67 @@ onMounted(async () => {
     if(podLogs === undefined) {
       podLogs = "";
     }
-    console.log("Adding a message")
+
     podLogs+= log_message.message + "\n";
     logsByPod.value.set(log_message.pod, podLogs);
   })
 
 
 })
+function parseDate(s: string){
+  var b = s.split(/\D+/);
+  return new Date(+b[0], +b[1]-1, +b[2], +b[3], +b[4], +b[5]);
+}
+
+function sortPodsBySearchOption() {
+  switch (sortOrder.value){
+    case "Lines":
+      podNames.value.sort((a, b) => {
+       let aLength = 0;
+       let aLogs = logsByPod.value.get(a)
+       if (aLogs !== undefined) {
+         aLength = aLogs.length;
+       }
+       let bLength = 0;
+       let bLogs = logsByPod.value.get(b);
+       if (bLogs !== undefined) {
+         bLength = bLogs.length;
+       }
+        return bLength - aLength;
+      });
+      break;
+    case "Pod Name":
+      podNames.value.sort((a, b) => {
+        return a.localeCompare(b);
+      });
+      break;
+    case "Recent Update":
+      podNames.value.sort((a, b) => {
+        let aLogs = logsByPod.value.get(a);
+        let bLogs = logsByPod.value.get(b);
+        if (aLogs === undefined) {
+          return 1;
+        }
+        if (bLogs === undefined) {
+          return -1;
+        }
+        let aLines = aLogs.split("\n");
+        let bLines = bLogs.split("\n");
+        let aLastLine = aLines[aLines.length - 2];
+        let bLastLine = bLines[bLines.length - 2];
+        let aTimeString = aLastLine.split(" ")[0];
+        let aTime = parseDate(aTimeString);
+        let bTimeString   = bLastLine.split(" ")[0];
+        let bTime = parseDate(bTimeString);
+        console.log(aTimeString, bTimeString);
+        console.log(aTime, bTime);
+        return  bTime.valueOf() - aTime.valueOf();
+      });
+      break;
+
+  }
+
+}
 
 async function stream(){
   logsByPod.value = new Map<string, string>();
@@ -107,7 +162,7 @@ async function execSearch() {
             <li class="nav-item dropdown">
               <label for="contextSelect" class="text-secondary">Namespace</label>
               <br/>
-                <select v-model="selectedNamespace" @change="setNamespace">
+                <select v-model="selectedNamespace" @change="setNamespace()">
                   <option disabled value="">Please select a namespace</option>
                   <option v-for="namespace in namespaces">{{ namespace}}</option>
                 </select>
@@ -129,6 +184,11 @@ async function execSearch() {
     </div>
   </nav>
   <div v-if="podNames[0] !== ''" class="container-fluid">
+    <label class="text-secondary" for="podSort">Sort By:</label>
+    <select id="podSort" @change="sortPodsBySearchOption()" v-model="sortOrder">
+      <option disabled value="">Sort Order</option>
+      <option v-for="searchOp in searchOptions">{{ searchOp}}</option>
+    </select>
     <div class="row align-content-center">
       <div v-for="(pod, index) in podNames" class="p-1 rounded-1 text-bg-dark text-info col-lg-5 sides">
         <div class="py-5">
