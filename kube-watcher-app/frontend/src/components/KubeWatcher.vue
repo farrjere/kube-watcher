@@ -29,6 +29,11 @@ onMounted(async () => {
 
     podLogs+= log_message.message + "\n";
     logsByPod.value.set(log_message.pod, podLogs);
+    let podLogOutputs = document.getElementsByClassName("box");
+    Array.prototype.forEach.call(podLogOutputs, function (el) {
+      el?.scrollTo(0, el.scrollHeight);
+    });
+
   })
 
 
@@ -194,6 +199,7 @@ async function execSearch() {
         <div class="py-5">
           <h3 class="display-5 fw-bold" style="text-align: center">{{pod}}</h3>
           <p style="white-space: pre-wrap" class="box">{{logsByPod.get(pod) }}</p>
+          <div id="anchor"></div>
         </div>
       </div>
     </div>
@@ -209,5 +215,10 @@ async function execSearch() {
   margin-inline-start: 120px;
   margin-bottom: 5px;
   margin-top: 5px;
+  overflow-anchor: none;
+}
+#anchor {
+  overflow-anchor: auto;
+  height: 1px;
 }
 </style>
