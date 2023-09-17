@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import {GetContexts, SetDeployment, LoadCluster, GetNamespaces, GetDeployments, SetNamespace, Stream, CancelPodStream, Save, Search} from "../../wailsjs/go/app/App";
 import {EventsOn} from "../../wailsjs/runtime";
 
 import {app} from "../../wailsjs/go/models";
 import PodLogMessage = app.PodLogMessage;
 const logsByPod = ref(new Map<string, string>());
-const count = ref(0)
+
+const autoScroll = ref(true);
 const contexts = ref([""])
 const sortOrder = ref("")
 const namespaces = ref([""])
@@ -19,7 +20,6 @@ const podNames = ref([""])
 const searchOptions = ref(["Lines", "Pod Name", "Recent Update"])
 
 onMounted(async () => {
-  console.log(`The initial count is ${count.value}.`)
   contexts.value = await GetContexts();
   EventsOn("pod_log", (log_message: PodLogMessage) => {
     let podLogs = logsByPod.value.get(log_message.pod);
@@ -29,15 +29,22 @@ onMounted(async () => {
 
     podLogs+= log_message.message + "\n";
     logsByPod.value.set(log_message.pod, podLogs);
-    let podLogOutputs = document.getElementsByClassName("box");
-    Array.prototype.forEach.call(podLogOutputs, function (el) {
-      el?.scrollTo(0, el.scrollHeight);
-    });
-
   })
 
 
 })
+
+watch(logsByPod, (newVal, oldVal) => {
+  if(autoScroll.value){
+    let podLogOutputs = document.getElementsByClassName("box");
+    Array.prototype.forEach.call(podLogOutputs, function (el) {
+      el?.scrollTo(0, el.scrollHeight);
+    });
+  }
+}, { deep: true })
+
+
+
 function parseDate(s: string){
   var b = s.split(/\D+/);
   return new Date(+b[0], +b[1]-1, +b[2], +b[3], +b[4], +b[5]);
@@ -83,8 +90,6 @@ function sortPodsBySearchOption() {
         let aTime = parseDate(aTimeString);
         let bTimeString   = bLastLine.split(" ")[0];
         let bTime = parseDate(bTimeString);
-        console.log(aTimeString, bTimeString);
-        console.log(aTime, bTime);
         return  bTime.valueOf() - aTime.valueOf();
       });
       break;
@@ -194,12 +199,17 @@ async function execSearch() {
       <option disabled value="">Sort Order</option>
       <option v-for="searchOp in searchOptions">{{ searchOp}}</option>
     </select>
+
+    <label class="text-secondary" for="flexCheckDefault">
+      Auto-Scroll Logs
+    </label>
+    <input class="form-check-input" type="checkbox" v-model="autoScroll" id="flexCheckDefault">
+
     <div class="row align-content-center">
       <div v-for="(pod, index) in podNames" class="p-1 rounded-1 text-bg-dark text-info col-lg-5 sides">
         <div class="py-5">
           <h3 class="display-5 fw-bold" style="text-align: center">{{pod}}</h3>
           <p style="white-space: pre-wrap" class="box">{{logsByPod.get(pod) }}</p>
-          <div id="anchor"></div>
         </div>
       </div>
     </div>
@@ -215,10 +225,6 @@ async function execSearch() {
   margin-inline-start: 120px;
   margin-bottom: 5px;
   margin-top: 5px;
-  overflow-anchor: none;
 }
-#anchor {
-  overflow-anchor: auto;
-  height: 1px;
-}
+
 </style>
