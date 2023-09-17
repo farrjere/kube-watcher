@@ -192,7 +192,7 @@ async function execSearch() {
     <div class="row align-content-center">
       <div v-for="(pod, index) in podNames" class="p-1 rounded-1 text-bg-dark text-info col-lg-5 sides">
         <div class="py-5">
-          <h3 class="display-5 fw-bold">{{pod}}</h3>
+          <h3 class="display-5 fw-bold" style="text-align: center">{{pod}}</h3>
           <p style="white-space: pre-wrap" class="box">{{logsByPod.get(pod) }}</p>
         </div>
       </div>
