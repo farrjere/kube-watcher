@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/farrjere/kube_watcher/kube"
 	"github.com/urfave/cli/v2"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	"log"
 	"os"
